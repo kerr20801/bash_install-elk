@@ -20,7 +20,7 @@ if [ $(sysctl -n vm.max_map_count) -lt 262144 ]; then
     echo "vm.max_map_count=262144" >> /etc/sysctl.conf
 fi
 
-# 創建目錄結構
+# 創建目錄結構並確保乾淨的狀態
 echo -e "${YELLOW}創建目錄結構...${NC}"
 mkdir -p ${ES_DIR}/{data,logs,config}
 
@@ -33,12 +33,11 @@ fi
 
 # 創建 docker-compose.yml
 echo -e "${YELLOW}創建 docker-compose.yml...${NC}"
-創建簡單的 docker-compose.yml
-cat > /opt/elasticsearch/docker-compose.yml << EOF
+cat > ${ES_DIR}/docker-compose.yml << EOF
 version: '3'
 services:
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.18.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ELK_VERSION}
     container_name: elasticsearch
     environment:
       - discovery.type=single-node
@@ -47,12 +46,20 @@ services:
       - xpack.security.enabled=false
       - cluster.name=elk-cluster
       - node.name=node-1
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
     volumes:
-      - /opt/elasticsearch/data:/usr/share/elasticsearch/data
-      - /opt/elasticsearch/logs:/usr/share/elasticsearch/logs
+      - ${ES_DIR}/data:/usr/share/elasticsearch/data
+      - ${ES_DIR}/logs:/usr/share/elasticsearch/logs
+      - ${ES_DIR}/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
     ports:
       - 9200:9200
-    restart: always
+    restart: on-failure
 EOF
 
 # 創建 elasticsearch.yml 配置文件
@@ -67,43 +74,28 @@ discovery.type: single-node
 xpack.security.enabled: false
 path.data: /usr/share/elasticsearch/data
 path.logs: /usr/share/elasticsearch/logs
-action.destructive_requires_name: false
+# 禁用默認的GC日誌配置
+logger.org.elasticsearch.bootstrap.Bootstrap.level: info
 EOF
 
-# 創建 jvm.options 配置文件
-echo -e "${YELLOW}創建 jvm.options 配置文件...${NC}"
-cat > ${ES_DIR}/config/jvm.options << EOF
--Xms512m
--Xmx512m
-EOF
-
-# 創建 log4j2.properties 配置文件
-echo -e "${YELLOW}創建 log4j2.properties 配置文件...${NC}"
-cat > ${ES_DIR}/config/log4j2.properties << EOF
-status = error
-appender.console.type = Console
-appender.console.name = console
-appender.console.layout.type = PatternLayout
-appender.console.layout.pattern = [%d{ISO8601}][%-5p][%-25c{1.}] [%node_name]%marker %m%n
-rootLogger.level = info
-rootLogger.appenderRef.console.ref = console
-EOF
-
-# 設定適當的權限
+# 重置並設定適當的權限
 echo -e "${YELLOW}設定權限...${NC}"
-# 確保目錄存在
-mkdir -p ${ES_DIR}/{data,logs,config}
+# 清理目錄内容以避免舊文件權限問題
+rm -rf ${ES_DIR}/data/*
+rm -rf ${ES_DIR}/logs/*
 
-# 設置權限
+# 設置權限 - 重要: elasticsearch容器通常以用戶ID 1000運行
 chown -R 1000:1000 ${ES_DIR}
-chmod -R 750 ${ES_DIR}/data
-chmod -R 750 ${ES_DIR}/logs
+chmod -R 755 ${ES_DIR}/data   # 改為 755 而不是 777
+chmod -R 755 ${ES_DIR}/logs   # 改為 755 而不是 777
 chmod -R 750 ${ES_DIR}/config
 chmod 644 ${ES_DIR}/config/elasticsearch.yml
-chmod 644 ${ES_DIR}/config/jvm.options
-chmod 644 ${ES_DIR}/config/log4j2.properties
+chmod 644 ${ES_DIR}/docker-compose.yml
 
 echo -e "${GREEN}Elasticsearch 設置完成!${NC}"
 echo "配置文件: ${ES_DIR}/config/elasticsearch.yml"
 echo "Docker Compose: ${ES_DIR}/docker-compose.yml"
-echo -e "${YELLOW}啟動命令: cd ${ES_DIR} && docker compose up -d${NC}"
+echo -e "${YELLOW}執行以下命令啟動:${NC}"
+echo "cd ${ES_DIR} && docker compose down -v && docker compose up -d"
+echo -e "${YELLOW}查看日誌:${NC}"
+echo "docker logs -f elasticsearch"
