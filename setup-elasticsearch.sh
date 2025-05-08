@@ -36,7 +36,7 @@ echo -e "${YELLOW}創建 docker-compose.yml...${NC}"
 cat > ${ES_DIR}/docker-compose.yml << EOF
 services:
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:${ELK_VERSION}
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.18.0
     container_name: elasticsearch
     network_mode: "host"
     environment:
@@ -54,9 +54,9 @@ services:
         soft: 65536
         hard: 65536
     volumes:
-      - ${ES_DIR}/data:/usr/share/elasticsearch/data
-      - ${ES_DIR}/logs:/usr/share/elasticsearch/logs
-      - ${ES_DIR}/config:/usr/share/elasticsearch/config
+      - /opt/elasticsearch/data:/usr/share/elasticsearch/data
+      - /opt/elasticsearch/logs:/usr/share/elasticsearch/logs
+      - /opt/elasticsearch/config:/usr/share/elasticsearch/config
     restart: always
 EOF
 
