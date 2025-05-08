@@ -10,6 +10,9 @@ NC='\033[0m' # No Color
 # 共用設定
 ELK_VERSION="8.18.0"
 ES_DIR="/opt/elasticsearch"
+ES_CONTAINER_DATA_DIR="/usr/share/elasticsearch/data"
+ES_CONTAINER_LOGS_DIR="/usr/share/elasticsearch/logs"
+ES_CONTAINER_CONFIG_DIR="/usr/share/elasticsearch/config"
 
 echo -e "${YELLOW}開始設置 Elasticsearch...${NC}"
 
@@ -46,6 +49,8 @@ services:
       - http.host=0.0.0.0
       - transport.host=0.0.0.0
       - network.host=0.0.0.0
+      - path.data=${ES_CONTAINER_DATA_DIR}
+      - path.logs=${ES_CONTAINER_LOGS_DIR}
     ulimits:
       memlock:
         soft: -1
@@ -54,9 +59,9 @@ services:
         soft: 65536
         hard: 65536
     volumes:
-      - /opt/elasticsearch/data:/usr/share/elasticsearch/data
-      - /opt/elasticsearch/logs:/usr/share/elasticsearch/logs
-      - /opt/elasticsearch/config:/usr/share/elasticsearch/config
+      - /opt/elasticsearch/data:${ES_CONTAINER_DATA_DIR}
+      - /opt/elasticsearch/logs:${ES_CONTAINER_LOGS_DIR}
+      - /opt/elasticsearch/config:${ES_CONTAINER_CONFIG_DIR}
     restart: always
 EOF
 
@@ -70,15 +75,25 @@ network.host: 0.0.0.0
 http.port: 9200
 discovery.type: single-node
 xpack.security.enabled: false
-path.data: /usr/share/elasticsearch/data
-path.logs: /usr/share/elasticsearch/logs
+path.data: ${ES_CONTAINER_DATA_DIR}
+path.logs: ${ES_CONTAINER_LOGS_DIR}
 action.destructive_requires_name: false
 EOF
 
 # 設定適當的權限
 echo -e "${YELLOW}設定權限...${NC}"
+# 確保目錄存在
+mkdir -p ${ES_DIR}/{data,logs,config}
+
+# 創建所需的子目錄
+mkdir -p ${ES_DIR}/data/nodes
+mkdir -p ${ES_DIR}/logs/gc.log
+
+# 設置權限（elasticsearch 通常使用 uid:gid = 1000:1000）
 chown -R 1000:1000 ${ES_DIR}
-chmod -R 755 ${ES_DIR}
+chmod -R 750 ${ES_DIR}/data
+chmod -R 750 ${ES_DIR}/logs
+chmod -R 750 ${ES_DIR}/config
 chmod 644 ${ES_DIR}/config/elasticsearch.yml
 
 echo -e "${GREEN}Elasticsearch 設置完成!${NC}"
