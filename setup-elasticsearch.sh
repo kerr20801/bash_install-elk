@@ -37,51 +37,30 @@ fi
 # 創建 docker-compose.yml
 echo -e "${YELLOW}創建 docker-compose.yml...${NC}"
 cat > ${ES_DIR}/docker-compose.yml << EOF
+version: '3'
 services:
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.18.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ELK_VERSION}
     container_name: elasticsearch
-    network_mode: "host"
     environment:
       - discovery.type=single-node
+      - bootstrap.memory_lock=false
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
       - xpack.security.enabled=false
-      - http.host=0.0.0.0
-      - transport.host=0.0.0.0
-      - network.host=0.0.0.0
-      - path.data=${ES_CONTAINER_DATA_DIR}
-      - path.logs=${ES_CONTAINER_LOGS_DIR}
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-      nofile:
-        soft: 65536
-        hard: 65536
+      - cluster.name=elk-cluster
+      - node.name=node-1
     volumes:
-      - /opt/elasticsearch/data:${ES_CONTAINER_DATA_DIR}
-      - /opt/elasticsearch/logs:${ES_CONTAINER_LOGS_DIR}
-      - /opt/elasticsearch/config:${ES_CONTAINER_CONFIG_DIR}
+      - ${ES_DIR}/data:${ES_CONTAINER_DATA_DIR}
+      - ${ES_DIR}/logs:${ES_CONTAINER_LOGS_DIR}
+    ports:
+      - 9200:9200
+      - 9300:9300
     restart: always
-EOF
-
-# 創建 elasticsearch.yml 配置文件
-echo -e "${YELLOW}創建 elasticsearch.yml 配置文件...${NC}"
-cat > ${ES_DIR}/config/elasticsearch.yml << EOF
-# ======================== Elasticsearch Configuration =========================
-cluster.name: "elk-cluster"
-node.name: "node-1"
-network.host: 0.0.0.0
-http.port: 9200
-discovery.type: single-node
-xpack.security.enabled: false
-path.data: ${ES_CONTAINER_DATA_DIR}
-path.logs: ${ES_CONTAINER_LOGS_DIR}
-action.destructive_requires_name: false
 EOF
 
 # 設定適當的權限
 echo -e "${YELLOW}設定權限...${NC}"
+
 # 確保目錄存在
 mkdir -p ${ES_DIR}/{data,logs,config}
 
@@ -94,9 +73,10 @@ chown -R 1000:1000 ${ES_DIR}
 chmod -R 750 ${ES_DIR}/data
 chmod -R 750 ${ES_DIR}/logs
 chmod -R 750 ${ES_DIR}/config
-chmod 644 ${ES_DIR}/config/elasticsearch.yml
 
 echo -e "${GREEN}Elasticsearch 設置完成!${NC}"
-echo "配置文件: ${ES_DIR}/config/elasticsearch.yml"
+echo "數據目錄: ${ES_DIR}/data"
+echo "日誌目錄: ${ES_DIR}/logs"
+echo "配置目錄: ${ES_DIR}/config"
 echo "Docker Compose: ${ES_DIR}/docker-compose.yml"
 echo -e "${YELLOW}啟動命令: cd ${ES_DIR} && docker compose up -d${NC}"
