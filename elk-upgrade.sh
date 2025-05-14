@@ -8,9 +8,10 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 # 配置 - 分開路徑
-ES_DIR="/opt/es"
-KIBANA_DIR="/ops/kibana"
-LOGSTASH_DIR="/ops/logstash"
+ES_DIR="/opt/elasticsearch/"
+KIBANA_DIR="/opt/kibana"
+LOGSTASH_DIR="/opt/logstash"
+
 
 # 顯示說明
 show_help() {
