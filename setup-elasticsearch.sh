@@ -1,48 +1,36 @@
 #!/bin/bash
-# setup-elasticsearch.sh - Elasticsearch 設置腳本
+# setup-elasticsearch.sh — standalone Elasticsearch setup
 
-# 顏色設定
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-RED='\033[0;31m'
-NC='\033[0m' # No Color
+set -euo pipefail
 
-# 共用設定
-ELK_VERSION="8.18.0"
+GREEN='\033[0;32m'; YELLOW='\033[0;33m'; RED='\033[0;31m'; NC='\033[0m'
+
+ELK_VERSION="${ELK_VERSION:-8.18.0}"
 ES_DIR="/opt/elasticsearch"
+ES_MEM="${ES_MEM:-512m}"
 
-echo -e "${YELLOW}開始設置 Elasticsearch...${NC}"
+echo -e "${YELLOW}Setting up Elasticsearch ${ELK_VERSION}...${NC}"
 
-# 檢查系統設定
-if [ $(sysctl -n vm.max_map_count) -lt 262144 ]; then
-    echo -e "${YELLOW}設置系統參數 vm.max_map_count=262144${NC}"
+# vm.max_map_count
+if [ "$(sysctl -n vm.max_map_count)" -lt 262144 ]; then
     sysctl -w vm.max_map_count=262144
-    echo "vm.max_map_count=262144" >> /etc/sysctl.conf
+    grep -q vm.max_map_count /etc/sysctl.conf \
+        || echo "vm.max_map_count=262144" >> /etc/sysctl.conf
 fi
 
-# 創建目錄結構並確保乾淨的狀態
-echo -e "${YELLOW}創建目錄結構...${NC}"
-mkdir -p ${ES_DIR}/{data,logs,config}
+mkdir -p "${ES_DIR}"/{data,logs,config}
 
-# 清理舊的容器（如果存在）
-if [ "$(docker ps -a -q -f name=elasticsearch)" ]; then
-    echo -e "${YELLOW}移除舊的 Elasticsearch 容器...${NC}"
-    docker stop elasticsearch > /dev/null 2>&1
-    docker rm elasticsearch > /dev/null 2>&1
-fi
+# Remove stale container
+docker rm -f elasticsearch 2>/dev/null || true
 
-# 創建 docker-compose.yml
-echo -e "${YELLOW}創建 docker-compose.yml...${NC}"
-cat > ${ES_DIR}/docker-compose.yml << EOF
-version: '3'
+cat > "${ES_DIR}/docker-compose.yml" <<EOF
 services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:${ELK_VERSION}
     container_name: elasticsearch
     environment:
       - discovery.type=single-node
-      - bootstrap.memory_lock=false
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - ES_JAVA_OPTS=-Xms${ES_MEM} -Xmx${ES_MEM}
       - xpack.security.enabled=false
       - cluster.name=elk-cluster
       - node.name=node-1
@@ -58,14 +46,17 @@ services:
       - ${ES_DIR}/logs:/usr/share/elasticsearch/logs
       - ${ES_DIR}/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
     ports:
-      - 9200:9200
-    restart: on-failure
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -qv '\"status\":\"red\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    restart: unless-stopped
 EOF
 
-# 創建 elasticsearch.yml 配置文件
-echo -e "${YELLOW}創建 elasticsearch.yml 配置文件...${NC}"
-cat > ${ES_DIR}/config/elasticsearch.yml << EOF
-# ======================== Elasticsearch Configuration =========================
+cat > "${ES_DIR}/config/elasticsearch.yml" <<EOF
 cluster.name: "elk-cluster"
 node.name: "node-1"
 network.host: 0.0.0.0
@@ -74,28 +65,14 @@ discovery.type: single-node
 xpack.security.enabled: false
 path.data: /usr/share/elasticsearch/data
 path.logs: /usr/share/elasticsearch/logs
-# 禁用默認的GC日誌配置
-logger.org.elasticsearch.bootstrap.Bootstrap.level: info
 EOF
 
-# 重置並設定適當的權限
-echo -e "${YELLOW}設定權限...${NC}"
-# 清理目錄内容以避免舊文件權限問題
-rm -rf ${ES_DIR}/data/*
-rm -rf ${ES_DIR}/logs/*
+rm -rf "${ES_DIR}"/data/* "${ES_DIR}"/logs/*
+chown -R 1000:1000 "${ES_DIR}"
+chmod -R 755 "${ES_DIR}/data" "${ES_DIR}/logs"
+chmod -R 750 "${ES_DIR}/config"
+chmod 644 "${ES_DIR}/config/elasticsearch.yml" "${ES_DIR}/docker-compose.yml"
 
-# 設置權限 - 重要: elasticsearch容器通常以用戶ID 1000運行
-chown -R 1000:1000 ${ES_DIR}
-chmod -R 755 ${ES_DIR}/data   # 改為 755 而不是 777
-chmod -R 755 ${ES_DIR}/logs   # 改為 755 而不是 777
-chmod -R 750 ${ES_DIR}/config
-chmod 644 ${ES_DIR}/config/elasticsearch.yml
-chmod 644 ${ES_DIR}/docker-compose.yml
-
-echo -e "${GREEN}Elasticsearch 設置完成!${NC}"
-echo "配置文件: ${ES_DIR}/config/elasticsearch.yml"
-echo "Docker Compose: ${ES_DIR}/docker-compose.yml"
-echo -e "${YELLOW}執行以下命令啟動:${NC}"
-echo "cd ${ES_DIR} && docker compose down -v && docker compose up -d"
-echo -e "${YELLOW}查看日誌:${NC}"
-echo "docker logs -f elasticsearch"
+echo -e "${GREEN}Elasticsearch setup done.${NC}"
+echo "Start: cd ${ES_DIR} && docker compose up -d"
+echo "Logs:  docker logs -f elasticsearch"
